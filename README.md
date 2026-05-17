@@ -1,0 +1,127 @@
+# DependencyInjection.Scanner
+
+[![NuGet Version](https://img.shields.io/nuget/v/Microsoft.Extensions.DependencyInjection.Scanner.svg)](https://www.nuget.org/packages/Microsoft.Extensions.DependencyInjection.Scanner)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/owner/repo/build.yml?branch=main)](actions)
+
+A high-performance, **zero-overhead**, and **Native AOT-compatible** dependency injection scanning library for .NET. 
+
+By utilizing modern C# Source Generators, `DependencyInjection.Scanner` shifts assembly scanning and service discovery from **runtime reflection** to **compile time**. It brings expressive, fluent compile-time assembly scanning and service discovery to the modern, trim-friendly .NET ecosystem with absolutely zero runtime performance cost.
+
+---
+
+## 🚀 Why DependencyInjection.Scanner?
+
+Traditional reflection-based scanning libraries rely heavily on runtime reflection (`Assembly.GetTypes()`, `System.Type` inspection) at startup. While convenient, this approach has massive downsides:
+*   **Startup Latency**: Reflecting over hundreds of types adds measurable latency to cold starts, particularly in serverless or containerized environments.
+*   **Native AOT & Trimming Incompatibility**: Reflection-based scanning breaks trimming and Native AOT compilation, throwing warnings (`IL2026`, `IL3050`) and crashing at runtime.
+*   **Black Box Registrations**: It is difficult to debug or inspect what the runtime scanner actually registered.
+
+`DependencyInjection.Scanner` solves these issues entirely:
+*   **Zero Runtime Reflection**: Generates direct, plain C# `IServiceCollection` extension calls at compile time.
+*   **Native AOT Ready**: 100% trim-compatible. Zero reflection warnings.
+*   **Auditable & Visible**: The generated registrations are written directly to your IDE's Analyzers node (`Dependencies -> Analyzers -> Microsoft.Extensions.DependencyInjection.Scanner`). You can inspect, set breakpoints, or step through them just like regular code.
+*   **IDE-Optimized Performance**: Built on Roslyn's incremental pipeline (`IIncrementalGenerator`) with a strictly serializable caching model, ensuring build times remain sub-millisecond during active typing.
+
+---
+
+## 📦 Installation
+
+Install the NuGet packages in your application:
+
+```bash
+dotnet add package Microsoft.Extensions.DependencyInjection.Scanner.Abstractions
+dotnet add package Microsoft.Extensions.DependencyInjection.Scanner
+```
+
+*   `Microsoft.Extensions.DependencyInjection.Scanner.Abstractions` houses the runtime fluent API and attributes.
+*   `Microsoft.Extensions.DependencyInjection.Scanner` contains the build-time C# Source Generator.
+
+---
+
+## 🛠️ Usage
+
+Configuring dependency scanning is as expressive as ever. Simply use the fluent API on your `IServiceCollection`:
+
+### 1. Configure the Scanner & Register
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+
+var services = new ServiceCollection();
+
+// 1. Define the scanning rules at compile-time (this method is a static hook)
+services.Scan(s => s
+    .TheCallingAssembly()
+    .WithDefaultConventions()
+    .Exclude<MyMockService>()
+);
+
+// 2. Invoke the compiled registrations
+services.AddScannedServices();
+```
+
+---
+
+## 🎨 Fluent API Reference
+
+The `ITypeScanner` fluent interface supports a variety of assembly targeting, filtering, and mapping behaviors:
+
+### Assembly Targeting
+*   **`TheCallingAssembly()`**: Scans the assembly that calls the `.Scan(...)` method.
+*   **`FromAssemblyOf<T>()`**: Scans the assembly containing the specified marker type `T`.
+
+### Filtering & Mapping Rules
+*   **`WithDefaultConventions()`**: Auto-registers interface-class pairs following the default naming pattern (e.g. registers `UserService` as `IUserService`).
+*   **`AddAllTypesOf<T>()`**: Registers all concrete implementations of the interface or base class `T`.
+*   **`Exclude<T>()`**: Explicitly prevents a concrete type `T` from being registered by the scanner.
+*   **`IncludeInternalTypes()`**: Instructs the scanner to include `internal` and non-public concrete classes. (By default, only `public` classes are scanned).
+*   **`AsSelf()`**: Registers concrete classes directly as themselves (e.g. `services.AddTransient<ConcreteService, ConcreteService>()`) instead of mapping to interfaces.
+
+### Lifetimes
+Configure registration lifetimes on a per-rule basis:
+*   **`WithTransientLifetime()`** (Default)
+*   **`WithScopedLifetime()`**
+*   **`WithSingletonLifetime()`**
+
+---
+
+## 🔍 How it Works (Under the Hood)
+
+When you write this:
+
+```csharp
+services.Scan(s => s
+    .TheCallingAssembly()
+    .WithDefaultConventions()
+    .IncludeInternalTypes()
+    .WithSingletonLifetime()
+);
+```
+
+The Source Generator runs behind the scenes inside the Roslyn compiler. It parses your configuration, discovers matching concrete classes within the target assembly, and emits a clean, deterministic C# file:
+
+```csharp
+// <auto-generated/>
+#nullable enable
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Microsoft.Extensions.DependencyInjection;
+
+public static class ScannerRegistrations
+{
+    public static void AddScannedServices(this IServiceCollection services)
+    {
+        services.AddSingleton<global::TestApp.IInternalService, global::TestApp.InternalService>();
+        services.AddSingleton<global::TestApp.IUserService, global::TestApp.UserService>();
+    }
+}
+```
+
+This ensures that at runtime, your application runs purely on high-performance, direct registrations with **absolutely no reflection overhead**.
+
+---
+
+## 🛡️ License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

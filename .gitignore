@@ -1,0 +1,17 @@
+# .NET Build and Output Directories
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+TestResult/
+
+# IDE and Editor Files
+.vs/
+.vscode/
+*.user
+*.userossc
+*.sln.docstates
+
+# OS Files
+.DS_Store
+Thumbs.db
